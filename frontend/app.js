@@ -1,51 +1,59 @@
-const form = document.getElementById('productForm');
-const productList = document.getElementById('productList');
-let editingProductId = null;
+document.getElementById("product-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const name = document.getElementById('name').value;
-    const price = document.getElementById('price').value;
+    const name = document.getElementById("name").value.trim();
+    const price = parseFloat(document.getElementById("price").value);
 
-    const method = editingProductId ? 'PUT' : 'POST';
-    const url = editingProductId ? `http://localhost:5000/products/${editingProductId}` : 'http://localhost:5000/products';
+    if (!name || isNaN(price) || price <= 0) {
+        alert("Insira um nome válido e um preço positivo.");
+        return;
+    }
 
-    const response = await fetch(url, {
-        method: method,
-        headers: { 'Content-Type': 'application/json' },
+    const response = await fetch("http://localhost:5000/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, price }),
     });
 
     if (response.ok) {
-        editingProductId = null;
-        form.reset();
-        loadProducts();
+        alert("Produto salvo com sucesso!");
+        fetchProducts();
+        document.getElementById("product-form").reset();
+    } else {
+        alert("Erro ao salvar o produto.");
     }
 });
 
-async function loadProducts() {
-    const response = await fetch('http://localhost:5000/products');
+async function fetchProducts() {
+    const response = await fetch("http://localhost:5000/products");
     const products = await response.json();
-    productList.innerHTML = products.map(p => `
-        <li>
-            ${p.name} - $${p.price} 
-            <button onclick="editProduct(${p.id}, '${p.name}', ${p.price})">Editar</button>
-            <button onclick="deleteProduct(${p.id})">Excluir</button>
-        </li>
-    `).join('');
-}
 
-async function editProduct(id, name, price) {
-    document.getElementById('name').value = name;
-    document.getElementById('price').value = price;
-    editingProductId = id;
+    const productsList = document.getElementById("products-list");
+    productsList.innerHTML = "";
+
+    products.forEach((product) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${product.id}</td>
+            <td>${product.name}</td>
+            <td>${product.price.toFixed(2)}</td>
+            <td>
+                <button onclick="deleteProduct(${product.id})">Excluir</button>
+            </td>
+        `;
+        productsList.appendChild(row);
+    });
 }
 
 async function deleteProduct(id) {
-    const response = await fetch(`http://localhost:5000/products/${id}`, { method: 'DELETE' });
+    const response = await fetch(`http://localhost:5000/products/${id}`, { method: "DELETE" });
+
     if (response.ok) {
-        loadProducts();
+        alert("Produto excluído com sucesso!");
+        fetchProducts();
+    } else {
+        alert("Erro ao excluir o produto.");
     }
 }
 
-loadProducts();
+fetchProducts();

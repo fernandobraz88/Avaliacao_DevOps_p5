@@ -1,53 +1,113 @@
 from flask import Flask, request, jsonify
 import psycopg2
-import os
+
+
+conn = psycopg2.connect(
+    host="db", 
+    database="product_db", 
+    user="postgres", 
+    password="postgres"
+)
 
 app = Flask(__name__)
 
-# Conexão com o banco de dados
-def get_db_connection():
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
-    )
-    return conn
 
-@app.route('/products', methods=['GET', 'POST'])
-def products():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+@app.route("/products", methods=["POST"])
+def add_product():
+    data = request.get_json()
 
-    if request.method == 'POST':
-        data = request.json
-        cursor.execute('INSERT INTO products (name, price) VALUES (%s, %s)', (data['name'], data['price']))
+    try:
+        name = data.get("name")
+        price = round(float(data.get("price", 0)), 2)  
+
+        if not name or price <= 0:
+            return jsonify({"message": "Nome inválido ou preço deve ser positivo."}), 400
+
+        cur = conn.cursor()
+        cur.execute("INSERT INTO products (name, price) VALUES (%s, %s)", (name, price))
         conn.commit()
-        conn.close()
-        return jsonify({'message': 'Product added'}), 201
 
-    cursor.execute('SELECT * FROM products')
-    products = cursor.fetchall()
-    conn.close()
-    return jsonify([{'id': p[0], 'name': p[1], 'price': p[2]} for p in products])
+        return jsonify({"message": "Produto adicionado com sucesso!"}), 201
 
-@app.route('/products/<int:id>', methods=['PUT', 'DELETE'])
-def manage_product(id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    except (ValueError, KeyError):
+        return jsonify({"message": "Erro ao processar os dados."}), 400
 
-    if request.method == 'PUT':
-        data = request.json
-        cursor.execute('UPDATE products SET name = %s, price = %s WHERE id = %s', (data['name'], data['price'], id))
+
+@app.route("/products", methods=["GET"])
+def get_products():
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, price FROM products ORDER BY id ASC")
+        products = cur.fetchall()
+
+        
+        result = [
+            {"id": prod[0], "name": prod[1], "price": float(prod[2])} for prod in products
+        ]
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({"message": "Erro ao buscar produtos.", "error": str(e)}), 500
+
+
+@app.route("/products/<int:product_id>", methods=["PUT"])
+def update_product(product_id):
+    data = request.get_json()
+
+    try:
+        name = data.get("name")
+        price = round(float(data.get("price", 0)), 2)
+
+        if not name or price <= 0:
+            return jsonify({"message": "Nome inválido ou preço deve ser positivo."}), 400
+
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE products SET name = %s, price = %s WHERE id = %s",
+            (name, price, product_id)
+        )
         conn.commit()
-        conn.close()
-        return jsonify({'message': 'Product updated'}), 200
 
-    if request.method == 'DELETE':
-        cursor.execute('DELETE FROM products WHERE id = %s', (id,))
+        if cur.rowcount == 0:
+            return jsonify({"message": "Produto não encontrado."}), 404
+
+        return jsonify({"message": "Produto atualizado com sucesso!"}), 200
+
+    except (ValueError, KeyError):
+        return jsonify({"message": "Erro ao processar os dados."}), 400
+
+
+@app.route("/products/<int:product_id>", methods=["DELETE"])
+def delete_product(product_id):
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM products WHERE id = %s", (product_id,))
         conn.commit()
-        conn.close()
-        return jsonify({'message': 'Product deleted'}), 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+        if cur.rowcount == 0:
+            return jsonify({"message": "Produto não encontrado."}), 404
+
+        return jsonify({"message": "Produto excluído com sucesso!"}), 200
+
+    except Exception as e:
+        return jsonify({"message": "Erro ao excluir o produto.", "error": str(e)}), 500
+
+
+@app.route("/products/<int:product_id>", methods=["GET"])
+def get_product(product_id):
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, price FROM products WHERE id = %s", (product_id,))
+        product = cur.fetchone()
+
+        if not product:
+            return jsonify({"message": "Produto não encontrado."}), 404
+
+        result = {"id": product[0], "name": product[1], "price": float(product[2])}
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({"message": "Erro ao buscar o produto.", "error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
